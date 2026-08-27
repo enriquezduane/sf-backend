@@ -88,8 +88,10 @@ def update_contact(db: Session, contact: Contact, payload: ContactUpdate) -> Con
     data = payload.model_dump(exclude_unset=True, exclude={"addresses"})
     for field, value in data.items():
         setattr(contact, field, _normalize_email(value) if field == "email" else value)
-    if payload.addresses is not None:
-        contact.addresses = _build_addresses(payload.addresses)
+    # Presence, not value: an explicit `addresses: null` clears the set, per the
+    # PATCH contract; only an omitted key leaves the stored addresses untouched.
+    if "addresses" in payload.model_fields_set:
+        contact.addresses = _build_addresses(payload.addresses or [])
     db.commit()
     db.refresh(contact)
     return contact

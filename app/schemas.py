@@ -224,8 +224,8 @@ class ContactUpdate(BaseModel):
         default=None,
         max_length=MAX_ADDRESSES,
         description=(
-            "When present, replaces the whole address list (an empty list removes every address). "
-            "Omit to keep the stored addresses untouched."
+            "When present, replaces the whole address list; an empty list or an explicit "
+            "`null` removes every address. Omit the key to keep the stored addresses untouched."
         ),
     )
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")

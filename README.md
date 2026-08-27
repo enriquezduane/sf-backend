@@ -125,8 +125,9 @@ with the contact:
 `city`, `state`, `postal_code`, and `country` are optional. The list is always
 written as a whole set: `POST` and `PUT` replace the stored addresses with the
 list sent (omitting it on `PUT` clears them), and `PATCH` replaces the set only
-when the `addresses` key is present — omit the key to keep the stored
-addresses untouched.
+when the `addresses` key is present — an empty list or an explicit `null`
+removes every address, while omitting the key keeps the stored addresses
+untouched.
 
 Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC) to the
 contact, and a server-generated string `id` plus the owning `contact_id` to

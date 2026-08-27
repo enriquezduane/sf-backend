@@ -228,6 +228,14 @@ def test_patch_with_addresses_replaces_them(client, payload):
     assert _address_count() == 1
 
 
+def test_patch_null_addresses_clears_them(client, payload):
+    created = client.post(BASE, json=payload).json()
+    patched = client.patch(f"{BASE}/{created['id']}", json={"addresses": None})
+    assert patched.status_code == 200
+    assert patched.json()["addresses"] == []
+    assert _address_count() == 0
+
+
 def test_delete_contact_cascades_addresses(client, payload):
     contact_id = client.post(BASE, json=payload).json()["id"]
     assert _address_count() == 1
