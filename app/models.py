@@ -23,6 +23,9 @@ class Contact(Base):
     company: Mapped[str | None] = mapped_column(String(200))
     job_title: Mapped[str | None] = mapped_column(String(200))
 
+    # Base64 data URL (data:image/...); Text because encoded images run large.
+    photo: Mapped[str | None] = mapped_column(Text)
+
     address: Mapped[str | None] = mapped_column(String(300))
     city: Mapped[str | None] = mapped_column(String(120))
     state: Mapped[str | None] = mapped_column(String(120))

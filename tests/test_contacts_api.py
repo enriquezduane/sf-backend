@@ -141,6 +141,35 @@ def test_delete_contact(client, payload):
     assert client.delete(f"{BASE}/{contact_id}").status_code == 404
 
 
+PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg=="
+
+
+def test_photo_round_trip(client, payload):
+    created = client.post(BASE, json={**payload, "photo": PHOTO}).json()
+    assert created["photo"] == PHOTO
+    assert client.get(f"{BASE}/{created['id']}").json()["photo"] == PHOTO
+
+
+def test_photo_defaults_to_null(client, payload):
+    assert client.post(BASE, json=payload).json()["photo"] is None
+
+
+def test_put_resending_photo_keeps_it(client, payload):
+    created = client.post(BASE, json={**payload, "photo": PHOTO}).json()
+    replaced = client.put(f"{BASE}/{created['id']}", json={**payload, "photo": created["photo"]})
+    assert replaced.status_code == 200
+    assert replaced.json()["photo"] == PHOTO
+
+
+def test_photo_rejects_non_data_url(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "https://example.com/ada.png"})
+    assert response.status_code == 422
+
+
+def test_photo_blank_is_stored_as_null(client, payload):
+    assert client.post(BASE, json={**payload, "photo": ""}).json()["photo"] is None
+
+
 def test_root_lists_entrypoints(client):
     body = client.get("/").json()
     assert body["contacts"] == BASE
