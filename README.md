@@ -107,11 +107,30 @@ also read):
 (case-insensitive). Everything else is optional.
 
 ```
-first_name, last_name, email, phone, company, job_title,
-address, city, state, postal_code, country, notes
+first_name, last_name, email, phone, company, job_title, notes,
+photo, addresses
 ```
 
-Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC).
+`photo` is a base64 `data:image/...;base64,...` URL (PNG/JPEG/GIF/WebP/AVIF).
+
+`addresses` is a list of up to 10 address objects in a strict 1:N relation
+with the contact:
+
+```json
+{ "type": "Work", "street": "1 Market St, Suite 400", "city": "San Francisco",
+  "state": "CA", "postal_code": "94105", "country": "USA" }
+```
+
+`type` must be `Home`, `Work`, or `Other` and `street` must not be blank;
+`city`, `state`, `postal_code`, and `country` are optional. The list is always
+written as a whole set: `POST` and `PUT` replace the stored addresses with the
+list sent (omitting it on `PUT` clears them), and `PATCH` replaces the set only
+when the `addresses` key is present — omit the key to keep the stored
+addresses untouched.
+
+Responses add `id`, `full_name`, `created_at`, and `updated_at` (UTC) to the
+contact, and a server-generated string `id` plus the owning `contact_id` to
+each address.
 
 ### List query parameters
 
@@ -132,7 +151,8 @@ List responses are wrapped so clients can paginate:
 ### Status codes
 
 `201` created · `204` deleted · `404` unknown id · `409` duplicate email ·
-`422` validation error (bad email, blank name, invalid `sort_by`)
+`422` validation error (bad email, blank name or street, unknown address
+`type`, invalid `sort_by`)
 
 ## Examples
 
@@ -141,7 +161,9 @@ List responses are wrapped so clients can paginate:
 curl -X POST http://127.0.0.1:8000/api/v1/contacts \
   -H 'content-type: application/json' \
   -d '{"first_name":"Katherine","last_name":"Johnson","email":"katherine@example.com",
-       "phone":"+1-757-555-0199","company":"NASA","job_title":"Mathematician"}'
+       "phone":"+1-757-555-0199","company":"NASA","job_title":"Mathematician",
+       "addresses":[{"type":"Work","street":"1 NASA Dr","city":"Hampton",
+                     "state":"VA","postal_code":"23666","country":"USA"}]}'
 
 # Search + paginate
 curl "http://127.0.0.1:8000/api/v1/contacts?search=nasa&limit=10&sort_by=last_name"
@@ -170,7 +192,7 @@ app/
   main.py             FastAPI app, lifespan startup, /health and /
   config.py           Environment-driven settings
   database.py         Engine, session factory, StaticPool in-memory wiring
-  models.py           Contact ORM model
+  models.py           Contact and Address ORM models
   schemas.py          Pydantic request/response models
   crud.py             Database operations (search, sort, paginate)
   seed.py             Sample contacts for the in-memory default
