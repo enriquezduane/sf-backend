@@ -1,6 +1,46 @@
+import base64
+import binascii
+import re
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
+# Generous ceiling for a base64 data URL — roughly a 3.5 MB source image.
+MAX_PHOTO_LENGTH = 5_000_000
+
+# Image subtypes browsers can both produce via FileReader and render in <img>.
+# svg+xml is deliberately excluded: an SVG payload can carry scripts.
+SUPPORTED_PHOTO_TYPES = frozenset({"png", "jpeg", "jpg", "gif", "webp", "avif"})
+
+# `data:image/<subtype>;base64,<payload>` — padding only at the end, alphabet enforced
+# here so the strict decode below only has to catch bad padding.
+_PHOTO_DATA_URL = re.compile(r"^data:image/(?P<subtype>[a-z0-9.+-]+);base64,(?P<payload>[A-Za-z0-9+/]+={0,2})$")
+
+_PHOTO_FIELD = Field(
+    default=None,
+    description=(
+        "Contact photo as a base64 data URL (`data:image/...;base64,...`). "
+        "Null or omitted means the UI falls back to initials."
+    ),
+)
+
+
+def _validate_photo(value: str | None) -> str | None:
+    """Accept only well-formed base64 image data URLs; treat blank as null."""
+    if value is None or not value.strip():
+        return None
+    if len(value) > MAX_PHOTO_LENGTH:
+        raise ValueError(f"photo must be at most {MAX_PHOTO_LENGTH} characters when base64-encoded")
+    match = _PHOTO_DATA_URL.match(value)
+    if match is None:
+        raise ValueError("photo must be a base64 data URL of the form 'data:image/<type>;base64,<data>'")
+    if match["subtype"] not in SUPPORTED_PHOTO_TYPES:
+        raise ValueError(f"photo image type must be one of: {', '.join(sorted(SUPPORTED_PHOTO_TYPES))}")
+    try:
+        base64.b64decode(match["payload"], validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("photo payload is not valid base64") from exc
+    return value
 
 
 class ContactBase(BaseModel):
@@ -69,6 +109,12 @@ class ContactBase(BaseModel):
         description="Free-form notes about the contact. No length limit.",
         examples=["Met at the SF hackathon."],
     )
+    photo: str | None = _PHOTO_FIELD
+
+    @field_validator("photo")
+    @classmethod
+    def _check_photo(cls, value: str | None) -> str | None:
+        return _validate_photo(value)
 
 
 _FULL_EXAMPLE = {
@@ -134,6 +180,12 @@ class ContactUpdate(BaseModel):
     postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
+    photo: str | None = _PHOTO_FIELD
+
+    @field_validator("photo")
+    @classmethod
+    def _check_photo(cls, value: str | None) -> str | None:
+        return _validate_photo(value)
 
 
 class ContactRead(ContactBase):
