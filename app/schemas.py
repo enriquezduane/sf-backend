@@ -1,9 +1,20 @@
+import base64
+import binascii
+import re
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
 
 # Generous ceiling for a base64 data URL — roughly a 3.5 MB source image.
 MAX_PHOTO_LENGTH = 5_000_000
+
+# Image subtypes browsers can both produce via FileReader and render in <img>.
+# svg+xml is deliberately excluded: an SVG payload can carry scripts.
+SUPPORTED_PHOTO_TYPES = frozenset({"png", "jpeg", "jpg", "gif", "webp", "avif"})
+
+# `data:image/<subtype>;base64,<payload>` — padding only at the end, alphabet enforced
+# here so the strict decode below only has to catch bad padding.
+_PHOTO_DATA_URL = re.compile(r"^data:image/(?P<subtype>[a-z0-9.+-]+);base64,(?P<payload>[A-Za-z0-9+/]+={0,2})$")
 
 _PHOTO_FIELD = Field(
     default=None,
@@ -15,13 +26,20 @@ _PHOTO_FIELD = Field(
 
 
 def _validate_photo(value: str | None) -> str | None:
-    """Accept only image data URLs; treat blank as null."""
+    """Accept only well-formed base64 image data URLs; treat blank as null."""
     if value is None or not value.strip():
         return None
-    if not value.startswith("data:image/"):
-        raise ValueError("photo must be a base64 data URL starting with 'data:image/'")
     if len(value) > MAX_PHOTO_LENGTH:
         raise ValueError(f"photo must be at most {MAX_PHOTO_LENGTH} characters when base64-encoded")
+    match = _PHOTO_DATA_URL.match(value)
+    if match is None:
+        raise ValueError("photo must be a base64 data URL of the form 'data:image/<type>;base64,<data>'")
+    if match["subtype"] not in SUPPORTED_PHOTO_TYPES:
+        raise ValueError(f"photo image type must be one of: {', '.join(sorted(SUPPORTED_PHOTO_TYPES))}")
+    try:
+        base64.b64decode(match["payload"], validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("photo payload is not valid base64") from exc
     return value
 
 

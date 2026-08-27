@@ -166,6 +166,22 @@ def test_photo_rejects_non_data_url(client, payload):
     assert response.status_code == 422
 
 
+def test_photo_rejects_malformed_base64(client, payload):
+    for bad in (
+        "data:image/png;base64,not-base64",  # invalid base64 alphabet
+        "data:image/png,plain-text",  # missing ;base64 marker
+        "data:image/png;base64,",  # empty payload
+        "data:image/png;base64,AAA",  # bad padding
+    ):
+        response = client.post(BASE, json={**payload, "photo": bad})
+        assert response.status_code == 422, f"accepted malformed photo: {bad!r}"
+
+
+def test_photo_rejects_unsupported_image_type(client, payload):
+    response = client.post(BASE, json={**payload, "photo": "data:image/svg+xml;base64,AAAA"})
+    assert response.status_code == 422
+
+
 def test_photo_blank_is_stored_as_null(client, payload):
     assert client.post(BASE, json={**payload, "photo": ""}).json()["photo"] is None
 
