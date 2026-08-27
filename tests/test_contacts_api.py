@@ -141,6 +141,100 @@ def test_delete_contact(client, payload):
     assert client.delete(f"{BASE}/{contact_id}").status_code == 404
 
 
+def _address_count() -> int:
+    from sqlalchemy import func, select
+
+    from app.database import SessionLocal
+    from app.models import Address
+
+    with SessionLocal() as db:
+        return db.execute(select(func.count()).select_from(Address)).scalar_one()
+
+
+def test_create_with_addresses_round_trip(client, payload):
+    created = client.post(BASE, json=payload).json()
+
+    assert len(created["addresses"]) == 1
+    address = created["addresses"][0]
+    assert isinstance(address["id"], str) and address["id"]
+    assert address["contact_id"] == created["id"]
+    assert address["type"] == "Work"
+    assert address["street"] == "1 Market St, Suite 400"
+
+    fetched = client.get(f"{BASE}/{created['id']}").json()
+    assert fetched["addresses"] == created["addresses"]
+
+
+def test_addresses_default_to_empty_list(client):
+    created = client.post(
+        BASE, json={"first_name": "Grace", "last_name": "Hopper", "email": "grace@example.com"}
+    ).json()
+    assert created["addresses"] == []
+
+
+def test_address_requires_known_type(client, payload):
+    bad = {**payload, "addresses": [{"type": "Castle", "street": "1 Main St"}]}
+    assert client.post(BASE, json=bad).status_code == 422
+
+
+def test_address_requires_street(client, payload):
+    bad = {**payload, "addresses": [{"type": "Home", "street": ""}]}
+    assert client.post(BASE, json=bad).status_code == 422
+
+
+def test_put_replaces_address_set(client, payload):
+    created = client.post(BASE, json=payload).json()
+    old_id = created["addresses"][0]["id"]
+
+    replaced = client.put(
+        f"{BASE}/{created['id']}",
+        json={
+            **payload,
+            "addresses": [
+                {"type": "Home", "street": "221B Baker St", "city": "London", "country": "UK"},
+                {"type": "Other", "street": "PO Box 42"},
+            ],
+        },
+    ).json()
+
+    assert [a["type"] for a in replaced["addresses"]] == ["Home", "Other"]
+    assert old_id not in {a["id"] for a in replaced["addresses"]}
+    assert _address_count() == 2  # the replaced row is gone, not orphaned
+
+
+def test_put_without_addresses_clears_them(client, payload):
+    created = client.post(BASE, json=payload).json()
+    replaced = client.put(
+        f"{BASE}/{created['id']}",
+        json={"first_name": "Ada", "last_name": "Lovelace", "email": "ada@example.com"},
+    ).json()
+    assert replaced["addresses"] == []
+    assert _address_count() == 0
+
+
+def test_patch_without_addresses_keeps_them(client, payload):
+    created = client.post(BASE, json=payload).json()
+    patched = client.patch(f"{BASE}/{created['id']}", json={"phone": "+1-000-000-0000"}).json()
+    assert patched["addresses"] == created["addresses"]
+
+
+def test_patch_with_addresses_replaces_them(client, payload):
+    created = client.post(BASE, json=payload).json()
+    patched = client.patch(
+        f"{BASE}/{created['id']}",
+        json={"addresses": [{"type": "Home", "street": "221B Baker St"}]},
+    ).json()
+    assert [a["street"] for a in patched["addresses"]] == ["221B Baker St"]
+    assert _address_count() == 1
+
+
+def test_delete_contact_cascades_addresses(client, payload):
+    contact_id = client.post(BASE, json=payload).json()["id"]
+    assert _address_count() == 1
+    assert client.delete(f"{BASE}/{contact_id}").status_code == 204
+    assert _address_count() == 0
+
+
 PHOTO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg=="
 
 
